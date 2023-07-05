@@ -3,76 +3,49 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 
 app = Flask(__name__)
-port = 5000
 client = MongoClient('mongodb://localhost:27017/')
-db = client['users_db']
-collection = db['users']
+db = client['mydatabase']
+users_collection = db['users']
 
+class UserResource:
+    def get_all_users(self):
+        users = list(users_collection.find({}, {'_id': False}))
+        return jsonify(users)
 
+    def get_user(self, user_id):
+        user = users_collection.find_one({'_id': ObjectId(user_id)}, {'_id': False})
+        if user:
+            return jsonify(user)
+        else:
+            return jsonify({'error': 'User not found'}), 404
 
-@app.route('/users', methods=['GET'])
-def get_all_users():
-    users = []
-    for user in collection.find():
-        users.append({
-            'id': str(user['_id']),
-            'name': user['name'],
-            'email': user['email'],
-            'password': user['password']
-        })
-    return jsonify(users)
+    def create_user(self):
+        data = request.get_json()
+        user_id = users_collection.insert_one(data).inserted_id
+        return jsonify({'id': str(user_id)}), 201
 
+    def update_user(self, user_id):
+        data = request.get_json()
+        result = users_collection.update_one({'_id': ObjectId(user_id)}, {'$set': data})
+        if result.modified_count > 0:
+            return jsonify({'message': 'User updated successfully'})
+        else:
+            return jsonify({'error': 'User not found'}), 404
 
-@app.route('/users', methods=['POST'])
-def create_user():
-    user_data = request.get_json()
-    user = {
-        'name': user_data['name'],
-        'email': user_data['email'],
-        'password': user_data['password']
-    }
-    result = collection.insert_one(user)
-    return jsonify(str(result.inserted_id))
+    def delete_user(self, user_id):
+        result = users_collection.delete_one({'_id': ObjectId(user_id)})
+        if result.deleted_count > 0:
+            return jsonify({'message': 'User deleted successfully'})
+        else:
+            return jsonify({'error': 'User not found'}), 404
 
+user_resource = UserResource()
 
-@app.route('/users/<user_id>', methods=['GET'])
-def get_user(user_id):
-    user = collection.find_one({'_id': ObjectId(user_id)})
-    if user:
-        return jsonify({
-            'id': str(user['_id']),
-            'name': user['name'],
-            'email': user['email'],
-            'password': user['password']
-        })
-    else:
-        return jsonify({'message': 'User not found'}), 404
-
-
-@app.route('/users/<user_id>', methods=['PUT'])
-def update_user(user_id):
-    user_data = request.get_json()
-    updated_user = {
-        'name': user_data['name'],
-        'email': user_data['email'],
-        'password': user_data['password']
-    }
-    result = collection.update_one({'_id': ObjectId(user_id)}, {'$set': updated_user})
-    if result.modified_count > 0:
-        return jsonify({'message': 'User updated successfully'})
-    else:
-        return jsonify({'message': 'User not found'}), 404
-
-
-@app.route('/users/<user_id>', methods=['DELETE'])
-def delete_user(user_id):
-    result = collection.delete_one({'_id': ObjectId(user_id)})
-    if result.deleted_count > 0:
-        return jsonify({'message': 'User deleted successfully'})
-    else:
-        return jsonify({'message': 'User not found'}), 404
-
+app.route('/users', methods=['GET'])(user_resource.get_all_users)
+app.route('/users/<user_id>', methods=['GET'])(user_resource.get_user)
+app.route('/users', methods=['POST'])(user_resource.create_user)
+app.route('/users/<user_id>', methods=['PUT'])(user_resource.update_user)
+app.route('/users/<user_id>', methods=['DELETE'])(user_resource.delete_user)
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=port ,debug=True)
-    
+    app.run(debug=True)
